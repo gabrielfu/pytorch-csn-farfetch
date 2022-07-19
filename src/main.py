@@ -1,133 +1,65 @@
-from __future__ import print_function
+from __future__ import annotations
 import argparse
 import os
 import sys
 import shutil
 
-from visdom import Visdom
 import numpy as np
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
-import torch.optim as optim
 import torch.utils.data
+import torch.backends.cudnn
 from torchvision import transforms
-from torch.autograd import Variable
-import torch.backends.cudnn as cudnn
+from visdom import Visdom
 
 from models import resnet18, CSN, TripletNet
 from triplet_image_loader import TripletImageLoader
 
 
-# Training settings
-parser = argparse.ArgumentParser(description='PyTorch MNIST Example')
-parser.add_argument('--batch-size', type=int, default=256, metavar='N',
-                    help='input batch size for training (default: 64)')
-parser.add_argument('--epochs', type=int, default=200, metavar='N',
-                    help='number of epochs to train (default: 200)')
-parser.add_argument('--start_epoch', type=int, default=1, metavar='N',
-                    help='number of start epoch (default: 1)')
-parser.add_argument('--lr', type=float, default=5e-5, metavar='LR',
-                    help='learning rate (default: 5e-5)')
-parser.add_argument('--seed', type=int, default=1, metavar='S',
-                    help='random seed (default: 1)')
-parser.add_argument('--no-cuda', action='store_true', default=False,
-                    help='enables CUDA training')
-parser.add_argument('--log-interval', type=int, default=20, metavar='N',
-                    help='how many batches to wait before logging training status')
-parser.add_argument('--margin', type=float, default=0.2, metavar='M',
-                    help='margin for triplet loss (default: 0.2)')
-parser.add_argument('--resume', default='', type=str,
-                    help='path to latest checkpoint (default: none)')
-parser.add_argument('--name', default='Conditional_Similarity_Network', type=str,
-                    help='name of experiment')
-parser.add_argument('--embed_loss', type=float, default=5e-3, metavar='M',
-                    help='parameter for loss for embedding norm')
-parser.add_argument('--mask_loss', type=float, default=5e-4, metavar='M',
-                    help='parameter for loss for mask norm')
-parser.add_argument('--num_traintriplets', type=int, default=100000, metavar='N',
-                    help='how many unique training triplets (default: 100000)')
-parser.add_argument('--dim_embed', type=int, default=64, metavar='N',
-                    help='how many dimensions in embedding (default: 64)')
-parser.add_argument('--test', dest='test', action='store_true',
-                    help='To only run inference on test set')
-parser.add_argument('--learned', dest='learned', action='store_true',
-                    help='To learn masks from random initialization')
-parser.add_argument('--prein', dest='prein', action='store_true',
-                    help='To initialize masks to be disjoint')
-parser.add_argument('--visdom', dest='visdom', action='store_true',
-                    help='Use visdom to track and plot')
-parser.add_argument('--conditions', nargs='*', type=int,
-                    help='Set of similarity notions')
-parser.set_defaults(test=False)
-parser.set_defaults(learned=False)
-parser.set_defaults(prein=False)
-parser.set_defaults(visdom=False)
-
 best_acc = 0
 
 
-def main():
-    global args, best_acc
-    args = parser.parse_args()
-    args.cuda = not args.no_cuda and torch.cuda.is_available()
-    torch.manual_seed(args.seed)
-    if args.cuda:
-        torch.cuda.manual_seed(args.seed)
+def main(args):
+    global best_acc
+    use_cuda = torch.cuda.is_available() and args.cuda
+    device = torch.device('cuda') if use_cuda else torch.device('cpu')
     if args.visdom:
         global plotter
         plotter = VisdomLinePlotter(env_name=args.name)
 
-    normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                                     std=[0.229, 0.224, 0.225])
+    transform = transforms.Compose([
+        transforms.Resize(112),
+        transforms.CenterCrop(112),
+        transforms.ToTensor(),
+        transforms.Normalize(
+            mean=[0.485, 0.456, 0.406],
+            std=[0.229, 0.224, 0.225]
+        ),
+    ])
 
-    global conditions
-    if args.conditions is not None:
-        conditions = args.conditions
-    else:
-        conditions = [0, 1, 2, 3]
 
-    kwargs = {'num_workers': 4, 'pin_memory': True} if args.cuda else {}
+    kwargs = {'num_workers': 4, 'pin_memory': True} if use_cuda else {}
     train_loader = torch.utils.data.DataLoader(
         TripletImageLoader('data', 'ut-zap50k-images', 'filenames.json',
-                           conditions, 'train', n_triplets=args.num_traintriplets,
-                           transform=transforms.Compose([
-                               transforms.Resize(112),
-                               transforms.CenterCrop(112),
-                               transforms.RandomHorizontalFlip(),
-                               transforms.ToTensor(),
-                               normalize,
-                           ])),
-        batch_size=args.batch_size, shuffle=True, **kwargs)
-    test_loader = torch.utils.data.DataLoader(
-        TripletImageLoader('data', 'ut-zap50k-images', 'filenames.json',
-                           conditions, 'test', n_triplets=160000,
-                           transform=transforms.Compose([
-                               transforms.Resize(112),
-                               transforms.CenterCrop(112),
-                               transforms.ToTensor(),
-                               normalize,
-                           ])),
+                           args.conditions, 'train', n_triplets=args.num_train_triplets,
+                           transform=transform),
         batch_size=args.batch_size, shuffle=True, **kwargs)
     val_loader = torch.utils.data.DataLoader(
         TripletImageLoader('data', 'ut-zap50k-images', 'filenames.json',
-                           conditions, 'val', n_triplets=80000,
-                           transform=transforms.Compose([
-                               transforms.Resize(112),
-                               transforms.CenterCrop(112),
-                               transforms.ToTensor(),
-                               normalize,
-                           ])),
+                           args.conditions, 'val', n_triplets=args.num_val_triplets,
+                           transform=transform),
+        batch_size=args.batch_size, shuffle=True, **kwargs)
+    test_loader = torch.utils.data.DataLoader(
+        TripletImageLoader('data', 'ut-zap50k-images', 'filenames.json',
+                           args.conditions, 'test', n_triplets=args.num_test_triplets,
+                           transform=transform),
         batch_size=args.batch_size, shuffle=True, **kwargs)
 
-    backbone = resnet18(pretrained=True, embedding_size=args.dim_embed)
-    csn = CSN(backbone=backbone, n_conditions=len(conditions),
-                                  embedding_size=args.dim_embed, learned_mask=args.learned, prein=args.prein)
+    backbone = resnet18(pretrained=True, embedding_size=args.dim_embed).to(device)
+    csn = CSN(backbone=backbone, n_conditions=len(args.conditions),
+                                  embedding_size=args.dim_embed, learned_mask=args.learned, prein=args.prein).to(device)
     global mask_var
     mask_var = csn.masks.weight
-    tnet = TripletNet(csn)
-    if args.cuda:
-        tnet.cuda()
+    tnet = TripletNet(csn).to(device)
 
     # optionally resume from a checkpoint
     if args.resume:
@@ -142,11 +74,11 @@ def main():
         else:
             print("=> no checkpoint found at '{}'".format(args.resume))
 
-    cudnn.benchmark = True
+    torch.backends.cudnn.benchmark = True
 
     criterion = torch.nn.MarginRankingLoss(margin=args.margin)
     parameters = filter(lambda p: p.requires_grad, tnet.parameters())
-    optimizer = optim.Adam(parameters, lr=args.lr)
+    optimizer = torch.optim.Adam(parameters, lr=args.lr)
 
     n_parameters = sum([p.data.nelement() for p in tnet.parameters()])
     print('  + Number of params: {}'.format(n_parameters))
@@ -173,7 +105,7 @@ def main():
         }, is_best)
 
 
-def train(train_loader, tnet, criterion, optimizer, epoch):
+def train(train_loader, tnet, criterion, optimizer, device, epoch):
     losses = AverageMeter()
     accs = AverageMeter()
     emb_norms = AverageMeter()
@@ -182,17 +114,12 @@ def train(train_loader, tnet, criterion, optimizer, epoch):
     # switch to train mode
     tnet.train()
     for batch_idx, (data1, data2, data3, c) in enumerate(train_loader):
-        if args.cuda:
-            data1, data2, data3, c = data1.cuda(), data2.cuda(), data3.cuda(), c.cuda()
-        data1, data2, data3, c = Variable(data1), Variable(data2), Variable(data3), Variable(c)
+        data1, data2, data3, c = data1.to(device), data2.to(device), data3.to(device), c.to(device)
 
         # compute output
         dista, distb, mask_norm, embed_norm, mask_embed_norm = tnet(data1, data2, data3, c)
         # 1 means, dista should be larger than distb
-        target = torch.FloatTensor(dista.size()).fill_(1)
-        if args.cuda:
-            target = target.cuda()
-        target = Variable(target)
+        target = torch.FloatTensor(dista.size()).fill_(1).to(device)
 
         loss_triplet = criterion(dista, distb, target)
         loss_embedd = embed_norm / np.sqrt(data1.size(0))
@@ -230,7 +157,7 @@ def train(train_loader, tnet, criterion, optimizer, epoch):
             plotter.plot_mask(torch.nn.functional.relu(mask_var).data.cpu().numpy().T, epoch)
 
 
-def test(test_loader, tnet, criterion, epoch):
+def test(test_loader, tnet, criterion, device, epoch):
     losses = AverageMeter()
     accs = AverageMeter()
     accs_cs = {}
@@ -240,17 +167,12 @@ def test(test_loader, tnet, criterion, epoch):
     # switch to evaluation mode
     tnet.eval()
     for batch_idx, (data1, data2, data3, c) in enumerate(test_loader):
-        if args.cuda:
-            data1, data2, data3, c = data1.cuda(), data2.cuda(), data3.cuda(), c.cuda()
-        data1, data2, data3, c = Variable(data1), Variable(data2), Variable(data3), Variable(c)
+        data1, data2, data3, c = data1.to(device), data2.to(device), data3.to(device), c.to(device)
         c_test = c
 
         # compute output
         dista, distb, _, _, _ = tnet(data1, data2, data3, c)
-        target = torch.FloatTensor(dista.size()).fill_(1)
-        if args.cuda:
-            target = target.cuda()
-        target = Variable(target)
+        target = torch.FloatTensor(dista.size()).fill_(1).to(device)
         test_loss = criterion(dista, distb, target).data.item()
 
         # measure accuracy and record loss
@@ -358,4 +280,49 @@ def accuracy_id(dista, distb, c, c_id):
 
 
 if __name__ == '__main__':
-    main()
+    parser = argparse.ArgumentParser(description='PyTorch Conditional Similarity Network')
+    parser.add_argument('--batch-size', type=int, default=512,
+                        help='input batch size for training (default: 512)')
+    parser.add_argument('--epochs', type=int, default=30,
+                        help='number of epochs to train (default: 30)')
+    parser.add_argument('--start-epoch', type=int, default=1,
+                        help='number of start epoch (default: 1)')
+    parser.add_argument('--lr', type=float, default=5e-5,
+                        help='learning rate (default: 5e-5)')
+    parser.add_argument('--seed', type=int, default=42,
+                        help='random seed (default: 42)')
+    parser.add_argument('--cuda', default=True, action='store_true',
+                        help='enables CUDA training')
+    parser.add_argument('--log-interval', type=int, default=20,
+                        help='how many batches to wait before logging training status')
+    parser.add_argument('--margin', type=float, default=0.2,
+                        help='margin for triplet loss (default: 0.2)')
+    parser.add_argument('--resume', default='', type=str,
+                        help='path to latest checkpoint (default: none)')
+    parser.add_argument('--name', default='Conditional_Similarity_Network', type=str,
+                        help='name of experiment')
+    parser.add_argument('--embed-loss', type=float, default=5e-3,
+                        help='parameter for loss for embedding norm')
+    parser.add_argument('--mask-loss', type=float, default=5e-4,
+                        help='parameter for loss for mask norm')
+    parser.add_argument('--num-train-triplets', type=int, default=100000,
+                        help='how many unique training triplets (default: 100000)')
+    parser.add_argument('--num-val-triplets', type=int, default=20000,
+                        help='how many unique validation triplets (default: 20000)')
+    parser.add_argument('--num-test-triplets', type=int, default=40000,
+                        help='how many unique test triplets (default: 40000)')
+    parser.add_argument('--embed-dim', type=int, default=64,
+                        help='embedding dimension (default: 64)')
+    parser.add_argument('--test', default=False, action='store_true',
+                        help='to only run inference on test set (default: False)')
+    parser.add_argument('--learned', default=True, action='store_true',
+                        help='to learn masks from random initialization (default: True)')
+    parser.add_argument('--prein', default=False, action='store_true',
+                        help='to initialize masks to be disjoint (default: False)')
+    parser.add_argument('--visdom', default=False, action='store_true',
+                        help='use visdom to track and plot (default: False)')
+    parser.add_argument('--conditions', nargs='*', type=int, default=[0, 1, 2, 3],
+                        help='set of similarity notions')
+    args = parser.parse_args()
+
+    main(args)
