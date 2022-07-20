@@ -15,7 +15,7 @@ What makes images similar? To measure the similarity between images, they are ty
 
 [Conditional Similarity Networks](https://arxiv.org/abs/1603.07810) address this shortcoming by learning a nonlinear embeddings that gracefully deals with multiple notions of similarity within a shared embedding. Different aspects of similarity are incorporated by assigning responsibility weights to each embedding dimension with respect to each aspect of similarity.
 
-<img src="https://github.com/andreasveit/conditional-similarity-networks/blob/master/images/csn_overview.png?raw=true" width="600">
+![](assets/csn_overview.png)
 
 Images are passed through a convolutional network and projected into a nonlinear embedding such that different dimensions encode features for specific notions of similarity. Subsequent masks indicate which dimensions of the embedding are responsible for separate aspects of similarity. We can then compare objects according to various notions of similarity by selecting an appropriate masked subspace.
 
@@ -35,7 +35,7 @@ $ python main.py --name {your experiment name} --learned --num_traintriplets 200
 
 Training progress can be easily tracked with [visdom](https://github.com/facebookresearch/visdom) using the `--visdom` flag. It keeps track of the learning rate, loss, training and validation accuracy both for all triplets as well as separated for each notion of similarity, the embedding norm, mask norm as well as the masks.
 
-<img src="https://github.com/andreasveit/conditional-similarity-networks/blob/master/images/visdom.png?raw=true" width="500">
+![](assets/visdom.png)
 
 By default the training code keeps track of the model with the highest performance on the validation set. Thus, after the model has converged, it can be directly evaluated on the test set as follows
 ```sh
