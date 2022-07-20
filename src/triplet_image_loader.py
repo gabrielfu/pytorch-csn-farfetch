@@ -15,15 +15,21 @@ filenames = {'train': ['class_tripletlist_train.txt', 'closure_tripletlist_train
 def default_image_loader(path):
     return Image.open(path).convert('RGB')
 
-class TripletImageLoader(torch.utils.data.Dataset):
-    def __init__(self, root, base_path, filenames_filename, conditions, split, n_triplets, transform=None,
+class TripletDataset(torch.utils.data.Dataset):
+    def __init__(self,
+                 root: str,
+                 filenames_filename,
+                 conditions,
+                 split,
+                 n_triplets,
+                 transform=None,
                  loader=default_image_loader):
         """ filenames_filename: A text file with each line containing the path to an image e.g.,
                 images/class1/sample.jpg
-            triplets_file_name: A text file with each line containing three integers, 
-                where integer i refers to the i-th image in the filenames file. 
-                For a line of intergers 'a b c', a triplet is defined such that image a is more 
-                similar to image c than it is to image b, e.g., 
+            triplets_file_name: A text file with each line containing three integers,
+                where integer i refers to the i-th image in the filenames file.
+                For a line of intergers 'a b c', a triplet is defined such that image a is more
+                similar to image c than it is to image b, e.g.,
                 0 2017 42 """
         self.root = root
         self.base_path = base_path  
