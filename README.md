@@ -1,33 +1,20 @@
-# Conditional Similarity Networks (CSNs)
+# Conditional Similarity Network (CSN) on Farfetch Dresses 
 
-This repository contains a [PyTorch](http://pytorch.org/) implementation of the paper [Conditional Similarity Networks](https://arxiv.org/abs/1603.07810) presented at CVPR 2017. 
+This repository is a fork of the official [Conditional Similarity Network](https://github.com/andreasveit/conditional-similarity-networks) repository, 
+implementing the model in the [paper](https://arxiv.org/abs/1603.07810) presented at CVPR 2017. 
 
-The code is based on the [PyTorch example for training ResNet on Imagenet](https://github.com/pytorch/examples/tree/master/imagenet) and the [Triplet Network example](https://github.com/andreasveit/triplet-network-pytorch).
+I did some refactoring and modified the code to train on [Farfetch dresses](https://www.farfetch.com/hk/shopping/women/dresses-1/items.aspx).
+The model can be used for explainable similar product recommendation. The reason to choosing Farfetch is that their 
+products are well annotated with detailed properties like color, sleeves, collar, etc, as shown in the following image:
 
-## Table of Contents
-0. [Introduction](#introduction)
-0. [Usage](#usage)
-0. [Citing](#citing)
-0. [Contact](#contact)
+![](assets/farfetch_website.png)
 
-## Introduction
-What makes images similar? To measure the similarity between images, they are typically embedded in a feature-vector space, in which their distance preserve the relative dissimilarity. However, when learning such similarity embeddings the simplifying assumption is commonly made that images are only compared to one unique measure of similarity.
 
-[Conditional Similarity Networks](https://arxiv.org/abs/1603.07810) address this shortcoming by learning a nonlinear embeddings that gracefully deals with multiple notions of similarity within a shared embedding. Different aspects of similarity are incorporated by assigning responsibility weights to each embedding dimension with respect to each aspect of similarity.
-
-![](assets/csn_overview.png)
-
-Images are passed through a convolutional network and projected into a nonlinear embedding such that different dimensions encode features for specific notions of similarity. Subsequent masks indicate which dimensions of the embedding are responsible for separate aspects of similarity. We can then compare objects according to various notions of similarity by selecting an appropriate masked subspace.
+## Data
+1. Go to this [Google Drive](https://drive.google.com/file/d/1SYQrE3oX3_OtgMOWv9EikXva9h7OMaPn/view?usp=sharing) link and download the zip file to the project directory
+2. Unzip the file
 
 ## Usage
-The detault setting for this repo is a CSN with fixed masks, an embedding dimension 64 and four notions of similarity.
-
-You can download the Zappos dataset as well as the training, validation and test triplets used in the paper with
-
-```sh
-python get_data.py
-```
-
 The network can be simply trained with `python main.py` or with optional arguments for different hyperparameters:
 ```sh
 $ python main.py --name {your experiment name} --learned --num_traintriplets 200000
@@ -42,19 +29,12 @@ By default the training code keeps track of the model with the highest performan
 $ python main.py --test --resume runs/{your experiment name}/model_best.pth.tar
 ```
 
-## Citing
-If you find this helps your research, please consider citing:
 
-```
-@conference{Veit2017,
-title = {Conditional Similarity Networks},
-author = {Andreas Veit and Serge Belongie and Theofanis Karaletsos},
-year = {2017},
-journal = {Computer Vision and Pattern Recognition (CVPR)},
-}
-```
+## Model Details
+What makes images similar? To measure the similarity between images, they are typically embedded in a feature-vector space, in which their distance preserve the relative dissimilarity. However, when learning such similarity embeddings the simplifying assumption is commonly made that images are only compared to one unique measure of similarity.
 
-## Contact
-andreas at cs dot cornell dot edu 
+[Conditional Similarity Networks](https://arxiv.org/abs/1603.07810) address this shortcoming by learning a nonlinear embeddings that gracefully deals with multiple notions of similarity within a shared embedding. Different aspects of similarity are incorporated by assigning responsibility weights to each embedding dimension with respect to each aspect of similarity.
 
-Any discussions, suggestions and questions are welcome!
+![](assets/csn_overview.png)
+
+Images are passed through a convolutional network and projected into a nonlinear embedding such that different dimensions encode features for specific notions of similarity. Subsequent masks indicate which dimensions of the embedding are responsible for separate aspects of similarity. We can then compare objects according to various notions of similarity by selecting an appropriate masked subspace.
