@@ -290,40 +290,41 @@ def adjust_learning_rate(
 
 
 if __name__ == '__main__':
+    now = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     parser = argparse.ArgumentParser(description='PyTorch Conditional Similarity Network')
-    parser.add_argument('--data-dir', default="data/farfetch",
+    parser.add_argument('--data-dir', default="data/farfetch", metavar="N",
                         help='directory to the training data (default: "data/farfetch")')
-    parser.add_argument('--batch-size', type=int, default=512,
+    parser.add_argument('--batch-size', type=int, default=512, metavar="N",
                         help='input batch size for training (default: 512)')
-    parser.add_argument('--epochs', type=int, default=30,
+    parser.add_argument('--epochs', type=int, default=30, metavar="N",
                         help='number of epochs to train (default: 30)')
-    parser.add_argument('--start-epoch', type=int, default=1,
+    parser.add_argument('--start-epoch', type=int, default=1, metavar="N",
                         help='number of start epoch (default: 1)')
-    parser.add_argument('--lr', type=float, default=5e-5,
+    parser.add_argument('--lr', type=float, default=5e-5, metavar="x",
                         help='learning rate (default: 5e-5)')
-    parser.add_argument('--seed', type=int, default=42,
+    parser.add_argument('--seed', type=int, default=42, metavar="N",
                         help='random seed (default: 42)')
     parser.add_argument('--cuda', default=True, action='store_true',
-                        help='enables CUDA training')
-    parser.add_argument('--log-interval', type=int, default=20,
-                        help='how many batches to wait before logging training status')
+                        help='enables CUDA training (default: True)')
+    parser.add_argument('--log-interval', type=int, default=20, metavar="N",
+                        help='how many batches to wait before logging training status (default: 20)')
     parser.add_argument('--margin', type=float, default=0.2,
                         help='margin for triplet loss (default: 0.2)')
     parser.add_argument('--resume', default='', type=str,
                         help='path to latest checkpoint (default: none)')
-    parser.add_argument('--name', default='csn', type=str,
-                        help='name of experiment')
-    parser.add_argument('--embed-loss-coeff', type=float, default=5e-3,
-                        help='loss coefficient for embedding norm')
-    parser.add_argument('--mask-loss-coeff', type=float, default=5e-4,
-                        help='loss coefficient for mask norm')
-    parser.add_argument('--train-triplets', type=int, default=100000,
+    parser.add_argument('--name', default=f"csn_{now}", type=str,
+                        help='name of experiment (default: "csn_yyyymmdd_hhmmss")')
+    parser.add_argument('--embed-loss-coeff', type=float, default=5e-3, metavar="x",
+                        help='loss coefficient for embedding norm (default: 5e-3)')
+    parser.add_argument('--mask-loss-coeff', type=float, default=5e-4, metavar="x",
+                        help='loss coefficient for mask norm (default: 5e-4)')
+    parser.add_argument('--train-triplets', type=int, default=100000, metavar="N",
                         help='how many unique training triplets (default: 100000)')
-    parser.add_argument('--val-triplets', type=int, default=20000,
+    parser.add_argument('--val-triplets', type=int, default=20000, metavar="N",
                         help='how many unique validation triplets (default: 20000)')
-    parser.add_argument('--test-triplets', type=int, default=40000,
+    parser.add_argument('--test-triplets', type=int, default=40000, metavar="N",
                         help='how many unique test triplets (default: 40000)')
-    parser.add_argument('--embed-dim', type=int, default=64,
+    parser.add_argument('--embed-dim', type=int, default=64, metavar="N",
                         help='embedding dimension (default: 64)')
     parser.add_argument('--test', default=False, action='store_true',
                         help='to only run inference on test set (default: False)')
@@ -338,6 +339,5 @@ if __name__ == '__main__':
     parser.add_argument('--conditions', nargs='*', type=int, default=[0, 1, 2, 3, 4, 5, 6, 7],
                         help='set of similarity notions')
     args = parser.parse_args()
-    args.name = args.name + "_" + datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
 
     main(args)
