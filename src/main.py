@@ -47,20 +47,20 @@ def main(args):
             std=[0.229, 0.224, 0.225]
         ),
     ])
-    train_dataset = TripletDataset(root='./data/farfetch',
+    train_dataset = TripletDataset(root=args.data_dir,
                                    condition_indices=args.conditions,
                                    split="train",
-                                   n_triplets=args.num_train_triplets,
+                                   n_triplets=args.train_triplets,
                                    transform=transform)
-    val_dataset = TripletDataset(root='./data/farfetch',
+    val_dataset = TripletDataset(root=args.data_dir,
                                  condition_indices=args.conditions,
                                  split="val",
-                                 n_triplets=args.num_val_triplets,
+                                 n_triplets=args.val_triplets,
                                  transform=transform)
-    test_dataset = TripletDataset(root='./data/farfetch',
+    test_dataset = TripletDataset(root=args.data_dir,
                                   condition_indices=args.conditions,
                                   split="test",
-                                  n_triplets=args.num_test_triplets,
+                                  n_triplets=args.test_triplets,
                                   transform=transform)
     conditions = train_dataset.conditions
     condition_indices = train_dataset.condition_indices
@@ -297,6 +297,8 @@ def adjust_learning_rate(
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='PyTorch Conditional Similarity Network')
+    parser.add_argument('--data-dir', default="data/farfetch",
+                        help='directory to the training data (default: "data/farfetch")')
     parser.add_argument('--batch-size', type=int, default=512,
                         help='input batch size for training (default: 512)')
     parser.add_argument('--epochs', type=int, default=30,
@@ -321,11 +323,11 @@ if __name__ == '__main__':
                         help='loss coefficient for embedding norm')
     parser.add_argument('--mask-loss-coeff', type=float, default=5e-4,
                         help='loss coefficient for mask norm')
-    parser.add_argument('--num-train-triplets', type=int, default=100000,
+    parser.add_argument('--train-triplets', type=int, default=100000,
                         help='how many unique training triplets (default: 100000)')
-    parser.add_argument('--num-val-triplets', type=int, default=20000,
+    parser.add_argument('--val-triplets', type=int, default=20000,
                         help='how many unique validation triplets (default: 20000)')
-    parser.add_argument('--num-test-triplets', type=int, default=40000,
+    parser.add_argument('--test-triplets', type=int, default=40000,
                         help='how many unique test triplets (default: 40000)')
     parser.add_argument('--embed-dim', type=int, default=64,
                         help='embedding dimension (default: 64)')
