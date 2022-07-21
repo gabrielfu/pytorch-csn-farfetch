@@ -30,12 +30,10 @@ def main(args):
     print(f"Device: {device}")
 
     # tensorboard
-    if args.tensorboard:
-        tensorboard_dir = os.path.join(args.tensorboard_dir, args.name)
-        writer = SummaryWriter(log_dir=tensorboard_dir)
-        print(f"Tensorboard dir: {tensorboard_dir}")
-    else:
-        writer = None
+    log_dir = os.path.join(args.log_dir, args.name)
+    os.makedirs(log_dir, exist_ok=True)
+    print(f"Log dir: {log_dir}")
+    writer = SummaryWriter(log_dir=log_dir) if args.tensorboard else None
 
     # dataset
     transform = transforms.Compose([
@@ -125,7 +123,7 @@ def main(args):
             'state_dict': model.state_dict(),
             'optimizer': optimizer.state_dict(),
             'best_acc': best_acc,
-        }, is_best, args.name)
+        }, is_best, log_dir)
 
         # plot mask distribution along the embedding dimensions
         if writer is not None and epoch % 2 == 0:
@@ -241,16 +239,14 @@ def test(
 def save_checkpoint(
         state: Dict,
         is_best: bool,
-        run_name: str,
+        log_dir: str,
 ):
     """Saves checkpoint to disk"""
-    directory = f"runs/{run_name}"
-    os.makedirs(directory, exist_ok=True)
     epoch = state["epoch"]
-    filename = os.path.join(directory, f"checkpoint-{epoch:05d}.pth.tar")
+    filename = os.path.join(log_dir, f"checkpoint-{epoch:05d}.pth.tar")
     torch.save(state, filename)
     if is_best:
-        shutil.copyfile(filename, os.path.join(directory, 'model_best.pth.tar'))
+        shutil.copyfile(filename, os.path.join(log_dir, 'model_best.pth.tar'))
 
 
 def plot_condition_masks(writer: Optional[SummaryWriter], epoch: int, conditions: List[str], weights: np.ndarray):
@@ -339,8 +335,8 @@ if __name__ == '__main__':
                         help='to initialize masks to be disjoint (default: False)')
     parser.add_argument('--tensorboard', default=False, action='store_true',
                         help='use tensorboard to track and plot (default: False)')
-    parser.add_argument('--tensorboard-dir', default="runs",
-                        help='directory to save tensorboard data (default: "runs")')
+    parser.add_argument('--log-dir', default="runs",
+                        help='directory to save checkpoints & tensorboard data (default: "runs")')
     parser.add_argument('--conditions', nargs='*', type=int, default=[0, 1, 2, 3, 4, 5, 6, 7],
                         help='set of similarity notions')
     args = parser.parse_args()
