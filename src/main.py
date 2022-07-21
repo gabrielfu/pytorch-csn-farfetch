@@ -188,6 +188,7 @@ def train(
         writer.add_scalar('Metrics/Loss/train', losses.avg, epoch)
         writer.add_scalar('Model/Embedding Norms/train', emb_norms.avg, epoch)
         writer.add_scalar('Model/Mask Norms/train', mask_norms.avg, epoch)
+        writer.flush()
 
 
 def test(
@@ -231,6 +232,7 @@ def test(
         writer.add_scalar('Metrics/Loss/test', losses.avg, epoch)
         for condition in conditions:
             writer.add_scalar(f'Supplementary/Conditional Accuracy/{condition}', accs_cs[condition].avg, epoch)
+        writer.flush()
 
     return accs.avg
 
@@ -273,6 +275,7 @@ def plot_condition_masks(writer: Optional[SummaryWriter], epoch: int, conditions
 
     # tensorboard
     writer.add_figure("Mask/Distribution", fig, epoch)
+    writer.flush()
 
 
 def adjust_learning_rate(
@@ -285,6 +288,7 @@ def adjust_learning_rate(
     lr = lr * ((1 - 0.015) ** epoch)
     if writer is not None:
         writer.add_scalar('Model/Learning Rate', lr, epoch)
+        writer.flush()
     for param_group in optimizer.param_groups:
         param_group['lr'] = lr
     return lr
