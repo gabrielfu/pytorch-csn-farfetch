@@ -1,10 +1,9 @@
 from __future__ import annotations
 import argparse
 import os
-import sys
 import shutil
 import datetime
-from typing import List, Dict
+from typing import List, Dict, Optional
 
 import numpy as np
 import torch
@@ -19,13 +18,14 @@ from models import resnet18, CSN, TripletNet
 from triplet_dataset import TripletDataset
 from metrics import AverageMeter, accuracy, accuracy_id
 
-plotter: VisdomLinePlotter
 
 def main(args):
     use_cuda = torch.cuda.is_available() and args.cuda
     device = torch.device('cuda') if use_cuda else torch.device('cpu')
-    if args.visdom:
-        plotter = VisdomLinePlotter(env_name=args.name)
+    print(f"Device: {device}")
+
+    # visdom
+    plotter = VisdomLinePlotter(env_name=args.name) if args.visdom else None
 
     # data loader
     transform = transforms.Compose([
@@ -65,10 +65,10 @@ def main(args):
         **kwargs)
 
     # model
-    backbone = resnet18(pretrained=True, embedding_size=args.dim_embed).to(device)
+    backbone = resnet18(pretrained=True, embedding_size=args.embed_dim).to(device)
     csn = CSN(backbone=backbone,
               n_conditions=len(args.conditions),
-              embedding_size=args.dim_embed,
+              embedding_size=args.embed_dim,
               learned_mask=args.learned,
               prein=args.prein).to(device)
     model = TripletNet(csn).to(device)
@@ -94,7 +94,7 @@ def main(args):
     torch.backends.cudnn.benchmark = True
 
     n_parameters = sum([p.data.nelement() for p in model.parameters()])
-    print('  + Number of params: {}'.format(n_parameters))
+    print('Number of params: {}'.format(n_parameters))
 
     if args.test:
         test(model, test_loader, args.conditions, criterion, device, 0, False, None)
@@ -103,11 +103,11 @@ def main(args):
     # training loop
     for epoch in range(args.start_epoch, args.epochs + 1):
         # update learning rate
-        lr = adjust_learning_rate(lr, optimizer, epoch, args.visdom)
+        lr = adjust_learning_rate(lr, optimizer, epoch, plotter)
         # train for one epoch
-        train(model, train_loader, criterion, optimizer, device, epoch, args.embed_loss_coeff, args.mask_loss_coeff, args.log_interval, args.visdom)
+        train(model, train_loader, criterion, optimizer, device, epoch, args.embed_loss_coeff, args.mask_loss_coeff, args.log_interval, plotter)
         # evaluate on validation set
-        acc = test(model, val_loader, args.conditions, criterion, device, epoch, args.visdom, args.name)
+        acc = test(model, val_loader, args.conditions, criterion, device, epoch, plotter, args.name)
 
         # remember best acc and save checkpoint
         is_best = acc > best_acc
@@ -119,7 +119,7 @@ def main(args):
         }, is_best, args.name)
 
         # plot mask distribution along the embedding dimensions
-        if args.visdom and epoch % 10 == 0:
+        if plotter is not None and epoch % 10 == 0:
             plotter.plot_mask(F.relu(model.csn.masks.weight).data.cpu().numpy().T, epoch)
 
 
@@ -133,7 +133,7 @@ def train(
         embed_loss_coeff: float,
         mask_loss_coeff: float,
         print_every: int=10,
-        visdom: bool=False
+        plotter: Optional[VisdomLinePlotter]=None,
 ):
     losses = AverageMeter()
     accs = AverageMeter()
@@ -175,7 +175,7 @@ def train(
                   f'Emb_Norm: {emb_norms.val:.2f} ({emb_norms.avg:.2f})')
 
     # log avg values to visdom
-    if visdom:
+    if plotter is not None:
         plotter.plot('acc', 'train', epoch, accs.avg)
         plotter.plot('loss', 'train', epoch, losses.avg)
         plotter.plot('emb_norms', 'train', epoch, emb_norms.avg)
@@ -189,7 +189,7 @@ def test(
         criterion: nn.Module,
         device: torch.device,
         epoch: int,
-        visdom: bool=False,
+        plotter: Optional[VisdomLinePlotter]=None,
         run_name: str=None,
 ):
     losses = AverageMeter()
@@ -217,7 +217,7 @@ def test(
         losses.update(test_loss, data1.size(0))
 
     print(f'Test set: Average loss: {losses.avg:.4f}, Accuracy: {accs.avg * 100:.2f}%\n')
-    if visdom:
+    if plotter is not None:
         for condition in conditions:
             plotter.plot('accs', 'acc_{}'.format(condition), epoch, accs_cs[condition].avg)
         plotter.plot(run_name, run_name, epoch, accs.avg, env='overview')
@@ -262,7 +262,7 @@ class VisdomLinePlotter:
                 ylabel=var_name
             ))
         else:
-            self.viz.updateTrace(X=np.array([x]), Y=np.array([y]), env=print_env, win=self.plots[var_name],
+            self.viz.line(X=np.array([x]), Y=np.array([y]), env=print_env, win=self.plots[var_name],
                                  name=split_name)
 
     def plot_mask(self, masks, epoch):
@@ -280,11 +280,11 @@ def adjust_learning_rate(
         lr: float,
         optimizer: torch.optim.Optimizer,
         epoch: int,
-        visdom: bool,
+        plotter: Optional[VisdomLinePlotter]=None,
 ):
     """Sets the learning rate to the initial LR decayed by 10 every 30 epochs"""
     lr = lr * ((1 - 0.015) ** epoch)
-    if visdom:
+    if plotter is not None:
         plotter.plot('lr', 'learning rate', epoch, lr)
     for param_group in optimizer.param_groups:
         param_group['lr'] = lr
