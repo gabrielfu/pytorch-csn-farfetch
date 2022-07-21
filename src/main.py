@@ -64,7 +64,7 @@ def main(args):
     condition_indices = train_dataset.condition_indices
 
     # data loader
-    kwargs = {'num_workers': 4, 'pin_memory': True} if use_cuda else {}
+    kwargs = {'num_workers': 4, 'pin_memory': False} if use_cuda else {}
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, **kwargs)
     val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=True, **kwargs)
     test_loader = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=True, **kwargs)
@@ -149,7 +149,6 @@ def train(
     mask_norms = AverageMeter()
 
     model.train()
-    torch.cuda.empty_cache()
     for batch_idx, (data1, data2, data3, c) in enumerate(train_loader):
         data1, data2, data3, c = data1.to(device), data2.to(device), data3.to(device), c.to(device)
 
@@ -175,7 +174,7 @@ def train(
         loss.backward()
         optimizer.step()
 
-        if batch_idx % print_every == 0:
+        if (batch_idx + 1) % print_every == 0 or (batch_idx + 1) == len(train_loader):
             print(f'{datetime.datetime.now()} \t'
                   f'Train Epoch: {epoch} [{batch_idx + 1}/{len(train_loader)}]\t'
                   f'Loss: {losses.val:.4f} ({losses.avg:.4f}) \t'
@@ -207,24 +206,23 @@ def test(
         accs_cs[condition] = AverageMeter()
 
     model.eval()
-    torch.cuda.empty_cache()
-    for batch_idx, (data1, data2, data3, c) in enumerate(test_loader):
-        data1, data2, data3, c = data1.to(device), data2.to(device), data3.to(device), c.to(device)
-        c_test = c
+    with torch.no_grad():
+        for batch_idx, (data1, data2, data3, c) in enumerate(test_loader):
+            data1, data2, data3, c = data1.to(device), data2.to(device), data3.to(device), c.to(device)
 
-        # compute output
-        dist_a, dist_b, _, _, _ = model(data1, data2, data3, c)
-        target = torch.FloatTensor(dist_a.size()).fill_(1).to(device)
-        test_loss = criterion(dist_a, dist_b, target)
+            # compute output
+            dist_a, dist_b, _, _, _ = model(data1, data2, data3, c)
+            target = torch.FloatTensor(dist_a.size()).fill_(1).to(device)
+            test_loss = criterion(dist_a, dist_b, target)
 
-        # measure accuracy and record loss
-        acc = accuracy(dist_a, dist_b)
-        accs.update(acc.data.item(), data1.size(0))
-        for condition, idx in zip(conditions, condition_indices):
-            cond_acc = accuracy_id(dist_a, dist_b, c_test, idx).data.item()
-            if not np.isnan(cond_acc):
-                accs_cs[condition].update(cond_acc, data1.size(0))
-        losses.update(test_loss.data.item(), data1.size(0))
+            # measure accuracy and record loss
+            acc = accuracy(dist_a, dist_b)
+            accs.update(acc.data.item(), data1.size(0))
+            for condition, idx in zip(conditions, condition_indices):
+                cond_acc = accuracy_id(dist_a, dist_b, c, idx).data.item()
+                if not np.isnan(cond_acc):
+                    accs_cs[condition].update(cond_acc, data1.size(0))
+            losses.update(test_loss.data.item(), data1.size(0))
 
     print(f'{datetime.datetime.now()} \tTest set: Loss: {losses.avg:.4f}, Accuracy: {accs.avg * 100:.2f}%')
     if writer is not None:
