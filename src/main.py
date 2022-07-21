@@ -30,7 +30,12 @@ def main(args):
     print(f"Device: {device}")
 
     # tensorboard
-    writer = SummaryWriter(log_dir=f"./runs/{args.name}") if args.tensorboard else None
+    if args.tensorboard:
+        tensorboard_dir = os.path.join(args.tensorboard_dir, args.name)
+        writer = SummaryWriter(log_dir=tensorboard_dir)
+        print(f"Tensorboard dir: {tensorboard_dir}")
+    else:
+        writer = None
 
     # dataset
     transform = transforms.Compose([
@@ -332,6 +337,8 @@ if __name__ == '__main__':
                         help='to initialize masks to be disjoint (default: False)')
     parser.add_argument('--tensorboard', default=False, action='store_true',
                         help='use tensorboard to track and plot (default: False)')
+    parser.add_argument('--tensorboard-dir', default="runs",
+                        help='directory to save tensorboard data (default: "runs")')
     parser.add_argument('--conditions', nargs='*', type=int, default=[0, 1, 2, 3, 4, 5, 6, 7],
                         help='set of similarity notions')
     args = parser.parse_args()
