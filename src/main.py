@@ -34,6 +34,7 @@ def main(args):
     os.makedirs(log_dir, exist_ok=True)
     print(f"Log dir: {log_dir}")
     writer = SummaryWriter(log_dir=log_dir) if args.tensorboard else None
+    print(f"Tensorboard: {args.tensorboard}")
 
     # dataset
     transform = transforms.Compose([
