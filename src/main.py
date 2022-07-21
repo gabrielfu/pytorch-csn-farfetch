@@ -3,16 +3,19 @@ import argparse
 import os
 import shutil
 import datetime
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
 from typing import List, Dict, Optional
 
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.utils.data import DataLoader
 import torch.backends.cudnn
+from torch.utils.data import DataLoader
+from torch.utils.tensorboard import SummaryWriter
 from torchvision import transforms
-from visdom import Visdom
 
 from models import resnet18, CSN, TripletNet
 from triplet_dataset import TripletDataset
@@ -20,14 +23,16 @@ from metrics import AverageMeter, accuracy, accuracy_id
 
 
 def main(args):
+    print(f"Run: {args.name}")
+
     use_cuda = torch.cuda.is_available() and args.cuda
     device = torch.device('cuda') if use_cuda else torch.device('cpu')
     print(f"Device: {device}")
 
-    # visdom
-    plotter = VisdomLinePlotter(env_name=args.name) if args.visdom else None
+    # tensorboard
+    writer = SummaryWriter(log_dir=f"./runs/{args.name}") if args.tensorboard else None
 
-    # data loader
+    # dataset
     transform = transforms.Compose([
         transforms.Resize(112),
         transforms.CenterCrop(112),
@@ -37,32 +42,29 @@ def main(args):
             std=[0.229, 0.224, 0.225]
         ),
     ])
+    train_dataset = TripletDataset(root='./data/farfetch',
+                                   condition_indices=args.conditions,
+                                   split="train",
+                                   n_triplets=args.num_train_triplets,
+                                   transform=transform)
+    val_dataset = TripletDataset(root='./data/farfetch',
+                                 condition_indices=args.conditions,
+                                 split="val",
+                                 n_triplets=args.num_val_triplets,
+                                 transform=transform)
+    test_dataset = TripletDataset(root='./data/farfetch',
+                                  condition_indices=args.conditions,
+                                  split="test",
+                                  n_triplets=args.num_test_triplets,
+                                  transform=transform)
+    conditions = train_dataset.conditions
+    condition_indices = train_dataset.condition_indices
+
+    # data loader
     kwargs = {'num_workers': 4, 'pin_memory': True} if use_cuda else {}
-    train_loader = DataLoader(
-        TripletDataset(root='./data/farfetch',
-                       condition_indices=args.conditions,
-                       split="train",
-                       n_triplets=args.num_train_triplets,
-                       transform=transform),
-        batch_size=args.batch_size, shuffle=True, **kwargs)
-    val_loader = DataLoader(
-        TripletDataset(root='./data/farfetch',
-                       condition_indices=args.conditions,
-                       split="val",
-                       n_triplets=args.num_val_triplets,
-                       transform=transform),
-        batch_size=args.batch_size,
-        shuffle=True,
-        **kwargs)
-    test_loader = DataLoader(
-        TripletDataset(root='./data/farfetch',
-                       condition_indices=args.conditions,
-                       split="test",
-                       n_triplets=args.num_test_triplets,
-                       transform=transform),
-        batch_size=args.batch_size,
-        shuffle=True,
-        **kwargs)
+    train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, **kwargs)
+    val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=True, **kwargs)
+    test_loader = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=True, **kwargs)
 
     # model
     backbone = resnet18(pretrained=True, embedding_size=args.embed_dim).to(device)
@@ -97,17 +99,17 @@ def main(args):
     print('Number of params: {}'.format(n_parameters))
 
     if args.test:
-        test(model, test_loader, args.conditions, criterion, device, 0, False, None)
+        test(model, test_loader, conditions, condition_indices, criterion, device, 0, None)
         return
 
     # training loop
     for epoch in range(args.start_epoch, args.epochs + 1):
         # update learning rate
-        lr = adjust_learning_rate(lr, optimizer, epoch, plotter)
+        lr = adjust_learning_rate(lr, optimizer, epoch, writer)
         # train for one epoch
-        train(model, train_loader, criterion, optimizer, device, epoch, args.embed_loss_coeff, args.mask_loss_coeff, args.log_interval, plotter)
+        train(model, train_loader, criterion, optimizer, device, epoch, args.embed_loss_coeff, args.mask_loss_coeff, args.log_interval, writer)
         # evaluate on validation set
-        acc = test(model, val_loader, args.conditions, criterion, device, epoch, plotter, args.name)
+        acc = test(model, val_loader, conditions, condition_indices, criterion, device, epoch, writer)
 
         # remember best acc and save checkpoint
         is_best = acc > best_acc
@@ -119,8 +121,9 @@ def main(args):
         }, is_best, args.name)
 
         # plot mask distribution along the embedding dimensions
-        if plotter is not None and epoch % 10 == 0:
-            plotter.plot_mask(F.relu(model.csn.masks.weight).data.cpu().numpy().T, epoch)
+        if writer is not None and epoch % 2 == 0:
+            weights = F.relu(model.csn.masks.weight).data.cpu().numpy().T
+            plot_condition_masks(writer, epoch, conditions, weights)
 
 
 def train(
@@ -133,7 +136,7 @@ def train(
         embed_loss_coeff: float,
         mask_loss_coeff: float,
         print_every: int=10,
-        plotter: Optional[VisdomLinePlotter]=None,
+        writer: Optional[SummaryWriter]=None,
 ):
     losses = AverageMeter()
     accs = AverageMeter()
@@ -158,7 +161,7 @@ def train(
         # measure accuracy and record loss
         acc = accuracy(dist_a, dist_b)
         losses.update(loss_triplet.data.item(), data1.size(0))
-        accs.update(acc, data1.size(0))
+        accs.update(acc.data.item(), data1.size(0))
         emb_norms.update(loss_embed.data.item())
         mask_norms.update(loss_mask.data.item())
 
@@ -168,29 +171,29 @@ def train(
         optimizer.step()
 
         if batch_idx % print_every == 0:
-            print(f'{datetime.datetime.now()}'
+            print(f'{datetime.datetime.now()} \t'
                   f'Train Epoch: {epoch} [{batch_idx + 1}/{len(train_loader)}]\t'
                   f'Loss: {losses.val:.4f} ({losses.avg:.4f}) \t'
                   f'Acc: {accs.val * 100:.2f}% ({accs.avg * 100:.2f}%) \t'
                   f'Emb_Norm: {emb_norms.val:.2f} ({emb_norms.avg:.2f})')
 
-    # log avg values to visdom
-    if plotter is not None:
-        plotter.plot('acc', 'train', epoch, accs.avg)
-        plotter.plot('loss', 'train', epoch, losses.avg)
-        plotter.plot('emb_norms', 'train', epoch, emb_norms.avg)
-        plotter.plot('mask_norms', 'train', epoch, mask_norms.avg)
+    # log avg values
+    if writer is not None:
+        writer.add_scalar('Metrics/Accuracy/train', accs.avg, epoch)
+        writer.add_scalar('Metrics/Loss/train', losses.avg, epoch)
+        writer.add_scalar('Model/Embedding Norms/train', emb_norms.avg, epoch)
+        writer.add_scalar('Model/Mask Norms/train', mask_norms.avg, epoch)
 
 
 def test(
         model: TripletNet,
         test_loader: DataLoader,
         conditions: List[str],
+        condition_indices: List[int],
         criterion: nn.Module,
         device: torch.device,
         epoch: int,
-        plotter: Optional[VisdomLinePlotter]=None,
-        run_name: str=None,
+        writer: Optional[SummaryWriter]=None,
 ):
     losses = AverageMeter()
     accs = AverageMeter()
@@ -207,22 +210,24 @@ def test(
         # compute output
         dist_a, dist_b, _, _, _ = model(data1, data2, data3, c)
         target = torch.FloatTensor(dist_a.size()).fill_(1).to(device)
-        test_loss = criterion(dist_a, dist_b, target).data.item()
+        test_loss = criterion(dist_a, dist_b, target)
 
         # measure accuracy and record loss
         acc = accuracy(dist_a, dist_b)
-        accs.update(acc, data1.size(0))
-        for condition in conditions:
-            accs_cs[condition].update(accuracy_id(dist_a, dist_b, c_test, condition), data1.size(0))
-        losses.update(test_loss, data1.size(0))
+        accs.update(acc.data.item(), data1.size(0))
+        for condition, idx in zip(conditions, condition_indices):
+            cond_acc = accuracy_id(dist_a, dist_b, c_test, idx).data.item()
+            if not np.isnan(cond_acc):
+                accs_cs[condition].update(cond_acc, data1.size(0))
+        losses.update(test_loss.data.item(), data1.size(0))
 
-    print(f'Test set: Average loss: {losses.avg:.4f}, Accuracy: {accs.avg * 100:.2f}%\n')
-    if plotter is not None:
+    print(f'Test set: Loss: {losses.avg:.4f}, Accuracy: {accs.avg * 100:.2f}%\n')
+    if writer is not None:
+        writer.add_scalar('Metrics/Accuracy/test', accs.avg, epoch)
+        writer.add_scalar('Metrics/Loss/test', losses.avg, epoch)
         for condition in conditions:
-            plotter.plot('accs', 'acc_{}'.format(condition), epoch, accs_cs[condition].avg)
-        plotter.plot(run_name, run_name, epoch, accs.avg, env='overview')
-        plotter.plot('acc', 'test', epoch, accs.avg)
-        plotter.plot('loss', 'test', epoch, losses.avg)
+            writer.add_scalar(f'Supplementary/Conditional Accuracy/{condition}', accs_cs[condition].avg, epoch)
+
     return accs.avg
 
 
@@ -241,51 +246,43 @@ def save_checkpoint(
         shutil.copyfile(filename, os.path.join(directory, 'model_best.pth.tar'))
 
 
-class VisdomLinePlotter:
-    """Plots to Visdom"""
+def plot_condition_masks(writer: Optional[SummaryWriter], epoch: int, conditions: List[str], weights: np.ndarray):
+    """
+    Args:
+        writer (Optional[SummaryWriter]): Tensorboard writer
+        epoch (int): Epoch number
+        conditions (List[str]): List of condition names
+        weights (np.ndarray): (C x D) array, where C is number of conditions and D is embedding dimension
+    """
+    if writer is None:
+        return
 
-    def __init__(self, env_name='main'):
-        self.viz = Visdom()
-        self.env = env_name
-        self.plots = {}
+    # plot the bar chart
+    fig, axes = plt.subplots(len(conditions), 1, figsize=(10, 8))
+    x = np.arange(weights.shape[1])
+    for i, condition in enumerate(conditions):
+        axes[i].bar(x, weights[i])
+        axes[i].set_xticks([])
+        axes[i].set_yticks([])
+        axes[i].set_ylabel(condition, rotation=0, labelpad=30)
+    axes[-1].set_xlabel("embedding dimension index")
+    fig.tight_layout(pad=0)
+    plt.subplots_adjust(wspace=None, hspace=None)
 
-    def plot(self, var_name, split_name, x, y, env=None):
-        if env is not None:
-            print_env = env
-        else:
-            print_env = self.env
-        if var_name not in self.plots:
-            self.plots[var_name] = self.viz.line(X=np.array([x, x]), Y=np.array([y, y]), env=print_env, opts=dict(
-                legend=[split_name],
-                title=var_name,
-                xlabel='Epochs',
-                ylabel=var_name
-            ))
-        else:
-            self.viz.line(X=np.array([x]), Y=np.array([y]), env=print_env, win=self.plots[var_name],
-                                 name=split_name)
-
-    def plot_mask(self, masks, epoch):
-        self.viz.bar(
-            X=masks,
-            env=self.env,
-            opts=dict(
-                stacked=True,
-                title=epoch,
-            )
-        )
+    # tensorboard
+    writer.add_figure("Mask/Distribution", fig, epoch)
 
 
 def adjust_learning_rate(
         lr: float,
         optimizer: torch.optim.Optimizer,
         epoch: int,
-        plotter: Optional[VisdomLinePlotter]=None,
+        writer: Optional[SummaryWriter]=None,
 ):
     """Sets the learning rate to the initial LR decayed by 10 every 30 epochs"""
     lr = lr * ((1 - 0.015) ** epoch)
-    if plotter is not None:
-        plotter.plot('lr', 'learning rate', epoch, lr)
+    if writer is not None:
+        writer.add_scalar('Model/Learning Rate', lr, epoch)
     for param_group in optimizer.param_groups:
         param_group['lr'] = lr
     return lr
@@ -311,7 +308,7 @@ if __name__ == '__main__':
                         help='margin for triplet loss (default: 0.2)')
     parser.add_argument('--resume', default='', type=str,
                         help='path to latest checkpoint (default: none)')
-    parser.add_argument('--name', default='Conditional_Similarity_Network', type=str,
+    parser.add_argument('--name', default='csn', type=str,
                         help='name of experiment')
     parser.add_argument('--embed-loss-coeff', type=float, default=5e-3,
                         help='loss coefficient for embedding norm')
@@ -331,10 +328,11 @@ if __name__ == '__main__':
                         help='to learn masks from random initialization (default: True)')
     parser.add_argument('--prein', default=False, action='store_true',
                         help='to initialize masks to be disjoint (default: False)')
-    parser.add_argument('--visdom', default=False, action='store_true',
-                        help='use visdom to track and plot (default: False)')
+    parser.add_argument('--tensorboard', default=False, action='store_true',
+                        help='use tensorboard to track and plot (default: False)')
     parser.add_argument('--conditions', nargs='*', type=int, default=[0, 1, 2, 3, 4, 5, 6, 7],
                         help='set of similarity notions')
     args = parser.parse_args()
+    args.name = args.name + "_" + datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
 
     main(args)
