@@ -333,7 +333,7 @@ if __name__ == '__main__':
                         help='to initialize masks to be disjoint (default: False)')
     parser.add_argument('--visdom', default=False, action='store_true',
                         help='use visdom to track and plot (default: False)')
-    parser.add_argument('--conditions', nargs='*', type=int, default=[0, 1, 2, 3],
+    parser.add_argument('--conditions', nargs='*', type=int, default=[0, 1, 2, 3, 4, 5, 6, 7],
                         help='set of similarity notions')
     args = parser.parse_args()
 
