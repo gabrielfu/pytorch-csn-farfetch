@@ -16,17 +16,15 @@ from torchvision import transforms
 from visdom import Visdom
 
 from models import resnet18, CSN, TripletNet
-from triplet_image_loader import TripletDataset
+from triplet_dataset import TripletDataset
 from metrics import AverageMeter, accuracy, accuracy_id
 
-
-
+plotter: VisdomLinePlotter
 
 def main(args):
     use_cuda = torch.cuda.is_available() and args.cuda
     device = torch.device('cuda') if use_cuda else torch.device('cpu')
     if args.visdom:
-        global plotter
         plotter = VisdomLinePlotter(env_name=args.name)
 
     transform = transforms.Compose([
@@ -58,10 +56,11 @@ def main(args):
         batch_size=args.batch_size, shuffle=True, **kwargs)
 
     backbone = resnet18(pretrained=True, embedding_size=args.dim_embed).to(device)
-    csn = CSN(backbone=backbone, n_conditions=len(args.conditions),
-                                  embedding_size=args.dim_embed, learned_mask=args.learned, prein=args.prein).to(device)
-    global mask_var
-    mask_var = csn.masks.weight
+    csn = CSN(backbone=backbone,
+              n_conditions=len(args.conditions),
+              embedding_size=args.dim_embed,
+              learned_mask=args.learned,
+              prein=args.prein).to(device)
     model = TripletNet(csn).to(device)
 
     # optionally resume from a checkpoint
@@ -77,12 +76,12 @@ def main(args):
         else:
             print(f"=> no checkpoint found at '{args.resume}'")
 
-    torch.backends.cudnn.benchmark = True
-
+    # criterion & optimizer
     lr = args.lr
     criterion = torch.nn.MarginRankingLoss(margin=args.margin)
     parameters = filter(lambda p: p.requires_grad, model.parameters())
     optimizer = torch.optim.Adam(parameters, lr=lr)
+    torch.backends.cudnn.benchmark = True
 
     n_parameters = sum([p.data.nelement() for p in model.parameters()])
     print('  + Number of params: {}'.format(n_parameters))
@@ -91,6 +90,7 @@ def main(args):
         test(model, test_loader, args.conditions, criterion, device, 0, False, None)
         return
 
+    # training loop
     for epoch in range(args.start_epoch, args.epochs + 1):
         # update learning rate
         lr = adjust_learning_rate(lr, optimizer, epoch, args.visdom)
@@ -107,6 +107,10 @@ def main(args):
             'state_dict': model.state_dict(),
             'best_acc': best_acc,
         }, is_best, args.name)
+
+        # plot mask distribution along the embedding dimensions
+        if args.visdom and epoch % 10 == 0:
+            plotter.plot_mask(F.relu(model.csn.masks.weight).data.cpu().numpy().T, epoch)
 
 
 def train(
@@ -166,8 +170,6 @@ def train(
         plotter.plot('loss', 'train', epoch, losses.avg)
         plotter.plot('emb_norms', 'train', epoch, emb_norms.avg)
         plotter.plot('mask_norms', 'train', epoch, mask_norms.avg)
-        if epoch % 10 == 0:
-            plotter.plot_mask(F.relu(mask_var).data.cpu().numpy().T, epoch)
 
 
 def test(
