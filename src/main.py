@@ -221,7 +221,7 @@ def test(
                 accs_cs[condition].update(cond_acc, data1.size(0))
         losses.update(test_loss.data.item(), data1.size(0))
 
-    print(f'Test set: Loss: {losses.avg:.4f}, Accuracy: {accs.avg * 100:.2f}%\n')
+    print(f'{datetime.datetime.now()} \tTest set: Loss: {losses.avg:.4f}, Accuracy: {accs.avg * 100:.2f}%')
     if writer is not None:
         writer.add_scalar('Metrics/Accuracy/test', accs.avg, epoch)
         writer.add_scalar('Metrics/Loss/test', losses.avg, epoch)
