@@ -75,19 +75,6 @@ def main(args):
               prein=args.prein).to(device)
     model = TripletNet(csn).to(device)
 
-    # optionally resume from a checkpoint
-    best_acc = 0
-    if args.resume:
-        if os.path.isfile(args.resume):
-            print(f"=> loading checkpoint '{args.resume}'")
-            checkpoint = torch.load(args.resume)
-            args.start_epoch = checkpoint['epoch']
-            best_acc = checkpoint['best_acc']
-            model.load_state_dict(checkpoint['state_dict'])
-            print(f"=> loaded checkpoint '{args.resume}' (epoch {checkpoint['epoch']})")
-        else:
-            print(f"=> no checkpoint found at '{args.resume}'")
-
     # criterion & optimizer
     lr = args.lr
     criterion = torch.nn.MarginRankingLoss(margin=args.margin)
@@ -97,6 +84,20 @@ def main(args):
 
     n_parameters = sum([p.data.nelement() for p in model.parameters()])
     print('Number of params: {}'.format(n_parameters))
+
+    # optionally resume from a checkpoint
+    best_acc = 0
+    if args.resume:
+        if os.path.isfile(args.resume):
+            print(f"=> loading checkpoint '{args.resume}'")
+            checkpoint = torch.load(args.resume)
+            args.start_epoch = checkpoint['epoch']
+            best_acc = checkpoint['best_acc']
+            model.load_state_dict(checkpoint['state_dict'])
+            optimizer.load_state_dict(checkpoint['optimizer'])
+            print(f"=> loaded checkpoint '{args.resume}' (epoch {checkpoint['epoch']})")
+        else:
+            print(f"=> no checkpoint found at '{args.resume}'")
 
     if args.test:
         test(model, test_loader, conditions, condition_indices, criterion, device, 0, None)
@@ -117,6 +118,7 @@ def main(args):
         save_checkpoint({
             'epoch': epoch,
             'state_dict': model.state_dict(),
+            'optimizer': optimizer.state_dict(),
             'best_acc': best_acc,
         }, is_best, args.name)
 
