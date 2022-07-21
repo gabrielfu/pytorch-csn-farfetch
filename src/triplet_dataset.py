@@ -82,11 +82,3 @@ class TripletDataset(Dataset):
 
     def __len__(self):
         return len(self.triplets)
-
-dataset = TripletDataset("./data/farfetch", split="train")
-print(f"len={len(dataset)}")
-a = dataset[0]
-s = time.perf_counter()
-b = dataset[1]
-e = time.perf_counter()
-print(f"time={e-s:.4f}s")
