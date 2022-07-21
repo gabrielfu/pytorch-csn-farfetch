@@ -143,8 +143,8 @@ def train(
     emb_norms = AverageMeter()
     mask_norms = AverageMeter()
 
-    # switch to train mode
     model.train()
+    torch.cuda.empty_cache()
     for batch_idx, (data1, data2, data3, c) in enumerate(train_loader):
         data1, data2, data3, c = data1.to(device), data2.to(device), data3.to(device), c.to(device)
 
@@ -201,8 +201,8 @@ def test(
     for condition in conditions:
         accs_cs[condition] = AverageMeter()
 
-    # switch to evaluation mode
     model.eval()
+    torch.cuda.empty_cache()
     for batch_idx, (data1, data2, data3, c) in enumerate(test_loader):
         data1, data2, data3, c = data1.to(device), data2.to(device), data3.to(device), c.to(device)
         c_test = c
