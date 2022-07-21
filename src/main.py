@@ -132,17 +132,17 @@ def train(
         data1, data2, data3, c = data1.to(device), data2.to(device), data3.to(device), c.to(device)
 
         # compute output
-        dista, distb, mask_norm, embed_norm, mask_embed_norm = model(data1, data2, data3, c)
-        # 1 means, dista should be larger than distb
-        target = torch.FloatTensor(dista.size()).fill_(1).to(device)
+        dist_a, dist_b, mask_norm, embed_norm, mask_embed_norm = model(data1, data2, data3, c)
+        # 1 means, dist_a should be larger than dist_b
+        target = torch.FloatTensor(dist_a.size()).fill_(1).to(device)
 
-        loss_triplet = criterion(dista, distb, target)
+        loss_triplet = criterion(dist_a, dist_b, target)
         loss_embed = embed_norm / np.sqrt(data1.size(0))
         loss_mask = mask_norm / data1.size(0)
         loss = loss_triplet + embed_loss_coeff * loss_embed + mask_loss_coeff * loss_mask
 
         # measure accuracy and record loss
-        acc = accuracy(dista, distb)
+        acc = accuracy(dist_a, dist_b)
         losses.update(loss_triplet.data.item(), data1.size(0))
         accs.update(acc, data1.size(0))
         emb_norms.update(loss_embed.data.item())
@@ -193,15 +193,15 @@ def test(
         c_test = c
 
         # compute output
-        dista, distb, _, _, _ = model(data1, data2, data3, c)
-        target = torch.FloatTensor(dista.size()).fill_(1).to(device)
-        test_loss = criterion(dista, distb, target).data.item()
+        dist_a, dist_b, _, _, _ = model(data1, data2, data3, c)
+        target = torch.FloatTensor(dist_a.size()).fill_(1).to(device)
+        test_loss = criterion(dist_a, dist_b, target).data.item()
 
         # measure accuracy and record loss
-        acc = accuracy(dista, distb)
+        acc = accuracy(dist_a, dist_b)
         accs.update(acc, data1.size(0))
         for condition in conditions:
-            accs_cs[condition].update(accuracy_id(dista, distb, c_test, condition), data1.size(0))
+            accs_cs[condition].update(accuracy_id(dist_a, dist_b, c_test, condition), data1.size(0))
         losses.update(test_loss, data1.size(0))
 
     print(f'Test set: Average loss: {losses.avg:.4f}, Accuracy: {accs.avg * 100:.2f}%\n')

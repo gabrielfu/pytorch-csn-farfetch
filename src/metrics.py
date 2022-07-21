@@ -17,13 +17,13 @@ class AverageMeter:
         self.avg = self.sum / self.count
 
 
-def accuracy(dista, distb):
+def accuracy(dist_a, dist_b):
     margin = 0
-    pred = (dista - distb - margin).cpu().data
-    return (pred > 0).sum() * 1.0 / dista.size()[0]
+    pred = (dist_a - dist_b - margin).cpu().data
+    return (pred > 0).sum() * 1.0 / dist_a.size()[0]
 
 
-def accuracy_id(dista, distb, c, c_id):
+def accuracy_id(dist_a, dist_b, c, c_id):
     margin = 0
-    pred = (dista - distb - margin).cpu().data
+    pred = (dist_a - dist_b - margin).cpu().data
     return ((pred > 0) * (c.cpu().data == c_id)).sum() * 1.0 / (c.cpu().data == c_id).sum()
