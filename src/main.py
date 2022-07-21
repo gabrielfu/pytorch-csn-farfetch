@@ -27,6 +27,7 @@ def main(args):
     if args.visdom:
         plotter = VisdomLinePlotter(env_name=args.name)
 
+    # data loader
     transform = transforms.Compose([
         transforms.Resize(112),
         transforms.CenterCrop(112),
@@ -36,25 +37,34 @@ def main(args):
             std=[0.229, 0.224, 0.225]
         ),
     ])
-
-
     kwargs = {'num_workers': 4, 'pin_memory': True} if use_cuda else {}
     train_loader = DataLoader(
-        TripletDataset('data', 'ut-zap50k-images', 'filenames.json',
-                           args.conditions, 'train', n_triplets=args.num_train_triplets,
-                           transform=transform),
+        TripletDataset(root='./data/farfetch',
+                       condition_indices=args.conditions,
+                       split="train",
+                       n_triplets=args.num_train_triplets,
+                       transform=transform),
         batch_size=args.batch_size, shuffle=True, **kwargs)
     val_loader = DataLoader(
-        TripletDataset('data', 'ut-zap50k-images', 'filenames.json',
-                           args.conditions, 'val', n_triplets=args.num_val_triplets,
-                           transform=transform),
-        batch_size=args.batch_size, shuffle=True, **kwargs)
+        TripletDataset(root='./data/farfetch',
+                       condition_indices=args.conditions,
+                       split="val",
+                       n_triplets=args.num_val_triplets,
+                       transform=transform),
+        batch_size=args.batch_size,
+        shuffle=True,
+        **kwargs)
     test_loader = DataLoader(
-        TripletDataset('data', 'ut-zap50k-images', 'filenames.json',
-                           args.conditions, 'test', n_triplets=args.num_test_triplets,
-                           transform=transform),
-        batch_size=args.batch_size, shuffle=True, **kwargs)
+        TripletDataset(root='./data/farfetch',
+                       condition_indices=args.conditions,
+                       split="test",
+                       n_triplets=args.num_test_triplets,
+                       transform=transform),
+        batch_size=args.batch_size,
+        shuffle=True,
+        **kwargs)
 
+    # model
     backbone = resnet18(pretrained=True, embedding_size=args.dim_embed).to(device)
     csn = CSN(backbone=backbone,
               n_conditions=len(args.conditions),
