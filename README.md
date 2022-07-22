@@ -13,7 +13,7 @@ products are well annotated with detailed properties like color, sleeves, collar
 ## Data
 
 ### Download ready-to-use data
-1. Go to this [Google Drive](https://drive.google.com/file/d/1SYQrE3oX3_OtgMOWv9EikXva9h7OMaPn/view?usp=sharing) link and download the zip file to the project directory
+1. Go to this [Google Drive](https://drive.google.com/file/d/1hXHdFIlC5EcQDKw8YVoVz0UKukC6QtXx/view?usp=sharing) link and download the zip file to the project directory
 2. Unzip the file
 
 ### How I collected it
